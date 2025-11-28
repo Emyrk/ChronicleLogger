@@ -41,6 +41,8 @@ Chronicle.version = "0.1"
 ---@field last_seen number timestamp of last seen
 ---@field canCooperate boolean whether unit can cooperate
 ---@field logged number timestamp of last logged
+---@field buffs string serialized buff data
+---@field debuffs string serialized debuff data
 
 -- Initialize the database
 function Chronicle:InitDB()
@@ -60,17 +62,41 @@ function Chronicle:InitDB()
 	self.db = ChronicleDB
 end
 
+---@param guid string
+---@param auraFunction function(string, number): (string, number, number)
+---@return string
+local function unitAuras(guid, auraFunction)
+	local auras = ""
+	local prefix = ","
+	for i=0, 31 do
+		local buffTexture, buffApplications, buffID = auraFunction("player", i)
+		if not buffTexture then
+			return auras
+		end
+		auras = auras .. string.format("%s%d=%d", prefix, buffID,buffApplications)
+		prefix = ","
+	end
+	return auras
+end
+
 -- Add or update a unit in the database
 function Chronicle:UpdateUnit(guid)
 	if not guid then return end
-
 	local unitData = self.db.units[guid] or {}
 	local lastLogged = unitData.logged or 0
+	if time() - lastLogged < 300 then
+		return
+	end
+
 	unitData.guid = guid
 	unitData.name = UnitName(guid)
 	unitData.owner = ""
 	unitData.last_seen = time()
 	unitData.canCooperate = UnitCanCooperate("player", guid)
+	unitData.logged = time()
+	unitData.buffs = unitAuras(guid, UnitBuff)
+	unitData.debuffs = unitAuras(guid, UnitDebuff)
+
 
 	-- Check for owner unit
 	local ok, ownerGuid = UnitExists(guid.."owner")
@@ -78,20 +104,20 @@ function Chronicle:UpdateUnit(guid)
 		unitData.owner = ownerGuid
 	end
 	
+
 	self.db.units[guid] = unitData
-	if time() - lastLogged > 300 then
-		local logLine = string.format("UNIT_INFO: %s&%s&%s&%s&%s",
-			date("%d.%m.%y %H:%M:%S"),
-			unitData.guid,
-			unitData.name,
-			unitData.canCooperate and "1" or "0",
-			unitData.owner or ""
-		)
-		CombatLogAdd(logLine, 1)
-		self:DebugPrint(logLine)
-		unitData.logged = time()
-	end
-	return unitData
+
+	local logLine = string.format("UNIT_INFO: %s&%s&%s&%s&%s&%s&%s",
+		date("%d.%m.%y %H:%M:%S"),
+		unitData.guid,
+		unitData.name,
+		unitData.canCooperate and "1" or "0",
+		unitData.owner or "",
+		unitData.buffs or "",
+		unitData.debuffs or ""
+	)
+	CombatLogAdd(logLine, 1)
+	self:DebugPrint(logLine)
 end
 
 -- Clean up old units that haven't been seen in a while
