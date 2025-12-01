@@ -114,13 +114,18 @@ function Chronicle:UpdateUnit(guid)
 		buffs or ""
 	)
 	CombatLogAdd(logLine, 1)
+	Chronicle:CleanupOldUnits()
 	-- self:DebugPrint(logLine)
 end
 
 -- Clean up old units that haven't been seen in a while
 function Chronicle:CleanupOldUnits(timeoutSeconds)
-	timeoutSeconds = timeoutSeconds or 300  -- Default 5 minutes
 	local currentTime = time()
+	timeoutSeconds = timeoutSeconds or 300  -- Default 5 minutes
+	if self.lastCleanup and (currentTime - self.lastCleanup) < timeoutSeconds then
+		return 0 -- Skip cleanup if done recently
+	end
+
 	local removed = 0
 	
 	for guid, unit in pairs(self.db.units) do
@@ -130,6 +135,7 @@ function Chronicle:CleanupOldUnits(timeoutSeconds)
 		end
 	end
 	
+	Chronicle.lastCleanup = time()
 	return removed
 end
 
